@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Карта стикеров Москвы</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Шрифт Inter и иконки Phosphor -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <!-- Собственные стили -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Контейнер карты -->
+  <div id="map"></div>
+
+  <!-- Плавающие элементы управления -->
+  <div class="top-bar">
+    <button class="fab-btn" id="btn-toggle-sidebar" title="Открыть список спотов">
+      <i class="ph ph-list-dashes"></i>
+      <span class="badge" id="spots-count-badge">0</span>
+    </button>
+
+    <div class="layer-switcher">
+      <button class="layer-pill active" data-layer="light">Светлая</button>
+      <button class="layer-pill" data-layer="dark">Тёмная</button>
+      <button class="layer-pill" data-layer="satellite">Спутник</button>
+    </div>
+  </div>
+
+<div class="bottom-controls">
+    <!-- Кнопка с классом admin-only -->
+    <button class="fab-action main-fab admin-only" id="btn-add-spot" title="Добавить стикер">
+      <i class="ph ph-plus"></i>
+    </button>
+    <button class="fab-action" id="btn-locate" title="Мое местоположение">
+      <i class="ph ph-crosshair"></i>
+    </button>
+  </div>
+
+  <!-- Боковая панель списка спотов -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">
+        <i class="ph-fill ph-sticker icon-brand"></i>
+        <h2>Споты Москвы</h2>
+      </div>
+      <button class="btn-icon" id="btn-close-sidebar"><i class="ph ph-x"></i></button>
+    </div>
+
+    <div class="sidebar-search">
+      <i class="ph ph-magnifying-glass"></i>
+      <input type="text" id="search-input" placeholder="Поиск по названию или улице...">
+    </div>
+
+    <div class="filter-group">
+      <button class="chip active" data-filter="all">Все</button>
+      <button class="chip" data-filter="ok">Целые</button>
+      <button class="chip" data-filter="damaged">Потрёпаны</button>
+      <button class="chip" data-filter="gone">Сорваны</button>
+    </div>
+
+    <div class="spots-list" id="spots-list">
+      <!-- Список генерируется через JS -->
+    </div>
+
+ <div class="sidebar-footer">
+      <button class="btn-outline" id="btn-export"><i class="ph ph-export"></i> Экспорт JSON</button>
+      <label class="btn-outline file-label admin-only">
+        <i class="ph ph-download-simple"></i> Импорт
+        <input type="file" id="file-import" accept=".json" style="display:none;">
+      </label>
+    </div>
+  </aside>
+
+  <!-- Модальное окно добавления / редактирования -->
+  <div class="modal-overlay hidden" id="spot-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Новый стикер</h3>
+        <button class="btn-icon" id="btn-close-modal"><i class="ph ph-x"></i></button>
+      </div>
+
+      <form id="spot-form">
+        <input type="hidden" id="spot-id">
+        <input type="hidden" id="spot-lat">
+        <input type="hidden" id="spot-lng">
+
+        <div class="coords-indicator" id="coords-text">Кликните по карте для выбора точки</div>
+
+        <div class="form-group">
+          <label>Название / Тег</label>
+          <input type="text" id="input-title" required placeholder="Например: Смайлик на водостоке">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Статус</label>
+            <select id="select-status">
+              <option value="ok">Цел и невредим</option>
+              <option value="damaged">Потрёпан / Оторван край</option>
+              <option value="gone">Сорван / Закрашен</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Стиль</label>
+            <select id="select-category">
+              <option value="slap">Слэп / Принт</option>
+              <option value="handstyle">Хэндстайл / Маркер</option>
+              <option value="character">Персонаж</option>
+              <option value="stencil">Трафарет</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Заметки (улица, этаж, ориентир)</label>
+          <input type="text" id="input-note" placeholder="За козырьком подъезда...">
+        </div>
+
+        <div class="form-group">
+          <label>Фотография спота</label>
+          <input type="file" id="input-photo" accept="image/*">
+          <div class="photo-preview-box" id="photo-preview">
+            <i class="ph ph-image"></i>
+            <span>Нет фото</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="btn-cancel-modal">Отмена</button>
+   <button type="submit" class="btn-primary">Сохранить спот</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Firebase библиотеки -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <!-- Твой скрипт -->
+  <script src="js/app.js"></script>
+</body>
+</html>
+
+
