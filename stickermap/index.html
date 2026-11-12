@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Карта стикеров</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Стили -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Верхняя панель профиля -->
+  <div class="top-bar">
+    <div id="user-panel" class="user-panel">
+      <button id="btn-open-auth" class="btn-auth-trigger">Войти</button>
+    </div>
+  </div>
+
+  <!-- Контейнер карты -->
+  <div id="map"></div>
+
+  <!-- Кнопка добавления точки -->
+  <button id="btn-add-spot" class="btn-add" title="Добавить стикер">+</button>
+
+  <!-- Модальное окно 1: Приветствие (Гость или Регистрация) -->
+  <div id="auth-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 350px; text-align: center;">
+      <h3>Карта стикеров</h3>
+      <p style="font-size: 13px; color: #555; margin-bottom: 16px; line-height: 1.4;">
+        Войди, чтобы отмечать свои стикеры, указывать крю и закрашивать территорию, или зайди как гость для просмотра.
+      </p>
+
+      <button type="button" id="btn-google-login" class="btn-google">
+        Регистрация / Вход через Google
+      </button>
+
+      <div style="margin: 12px 0; font-size: 12px; color: #999;">или через Telegram</div>
+
+      <!-- Виджет Telegram Login (@stickermapbot) -->
+      <div id="tg-widget-container" style="display: flex; justify-content: center; min-height: 40px;"></div>
+
+      <hr style="border: none; border-top: 1px solid #eee; margin: 16px 0;">
+
+      <button type="button" id="btn-guest-mode" class="btn-guest">
+        Продолжить как гость
+      </button>
+    </div>
+  </div>
+
+  <!-- Модальное окно 2: Настройка профиля (Ник и Крю) -->
+  <div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 360px;">
+      <h3>Профиль автора</h3>
+      <form id="profile-form">
+        <div class="form-group">
+          <label>Твой ник / тег</label>
+          <input type="text" id="profile-nickname" placeholder="Например: Klima" maxlength="24" required>
+        </div>
+
+        <div class="form-group">
+          <label>Формат участия</label>
+          <div class="radio-group">
+            <label class="radio-card">
+              <input type="radio" name="crewType" value="solo" checked>
+              <span>Одиночка (Solo)</span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="crewType" value="crew">
+              <span>Крю / Команда</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group hidden" id="crew-name-group">
+          <label>Название крю (определяет цвет твоей зоны)</label>
+          <input type="text" id="profile-crew-name" placeholder="Например: UNDERGROUND" maxlength="24">
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-logout" class="btn-cancel" style="color: #e74c3c;">Выйти</button>
+          <button type="submit" class="btn-submit">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модальное окно 3: Создание / Редактирование спота -->
+  <div id="spot-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h3 id="modal-title">Новый стикер</h3>
+      <form id="spot-form">
+        <input type="hidden" id="spot-id">
+        <input type="hidden" id="spot-lat">
+        <input type="hidden" id="spot-lng">
+
+        <div class="form-group">
+          <label>Название / Тег</label>
+          <input type="text" id="input-title" placeholder="Например: Стикер у метро" required>
+        </div>
+
+        <div class="form-group">
+          <label>Статус</label>
+          <select id="select-status">
+            <option value="ok">Цел (Территория активна)</option>
+            <option value="damaged">Потрёпан / Выцвел</option>
+            <option value="gone">Сорван / Закрашен</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Описание / Детали</label>
+          <textarea id="input-note" rows="2" placeholder="Где именно наклеен, ориентир..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Фотографии (камера или галерея)</label>
+          <input type="file" id="input-photos" accept="image/*" multiple>
+          <div id="photos-preview-grid" class="photos-preview-grid"></div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-modal" class="btn-cancel">Отмена</button>
+          <button type="submit" id="btn-save-spot" class="btn-submit">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Полноэкранный просмотрщик (Lightbox) -->
+  <div id="lightbox-modal" class="lightbox-overlay hidden">
+    <button class="lightbox-close" id="lightbox-close">&times;</button>
+    <img id="lightbox-img" src="" alt="Просмотр фото">
+  </div>
+
+  <!-- Firebase Scripts (App, Auth, Firestore) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Основной скрипт -->
+  <script src="js/app.js"></script>
+<!-- Turf.js для слияния пересекающихся кругов в единую фигуру -->
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+  <!-- Основной скрипт -->
+  <script src="js/app.js"></script>
+</body>
+</body>
+</html>
