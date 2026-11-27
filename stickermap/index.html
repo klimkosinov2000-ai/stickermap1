@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>StickerMap — Карта стикеров и граффити</title>
+  <meta name="description" content="Интерактивная карта уличного искусства: находи стикеры и граффити, захватывай территории, качай уличный ранг и объединяйся в крю." />
+
+  <!-- PWA и иконка сайта -->
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="StickerMap" />
+
+  <!-- Превью ссылки (Open Graph / Telegram / VK) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="StickerMap" />
+  <meta property="og:title" content="StickerMap — Карта стикеров и граффити" />
+  <meta property="og:description" content="Отмечай стикеры и граффити на карте, захватывай районы города, повышай ранг и следи за активностью комьюнити." />
+  <meta property="og:image" content="https://stickermap1-nupc.vercel.app/img.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://stickermap1-nupc.vercel.app/img.png" />
+
+  <!-- Preconnect для ускорения загрузки карты и базы -->
+  <link rel="preconnect" href="https://akoecseeheeafmgmrshv.supabase.co" crossorigin />
+  <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/style.css?v=3" />
+</head>
+<body>
+
+  <!-- Верхняя панель -->
+  <header class="app-header">
+    <h1>StickerMap</h1>
+    <div id="user-panel" class="user-panel">
+      <button id="btn-open-auth" class="btn-auth-trigger">Войти / Регистрация</button>
+    </div>
+  </header>
+
+  <!-- Индикатор загрузки точек -->
+  <div id="map-loading-toast" class="hidden" style="
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    background: rgba(18, 18, 22, 0.92);
+    color: #ffcc00;
+    border: 1px solid rgba(255, 204, 0, 0.45);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    pointer-events: none;
+    white-space: nowrap;
+  ">Загружаем точки города...</div>
+
+  <!-- Левая колонка HUD-виджетов -->
+  <div class="hud-left-stack">
+    <!-- Виджет: Топ территорий и рангов -->
+    <div id="leaderboard-hud" class="hud-widget">
+      <button type="button" id="btn-toggle-leaderboard" class="hud-toggle-btn">
+        <span>Топ территорий</span>
+        <span id="leaderboard-arrow" class="hud-arrow">&#9662;</span>
+      </button>
+      <div id="leaderboard-body" class="hud-body hidden">
+        <div id="leaderboard-list" class="leaderboard-list"></div>
+      </div>
+    </div>
+
+    <!-- Виджет: Свежая активность -->
+    <div id="feed-hud" class="hud-widget">
+      <button type="button" id="btn-toggle-feed" class="hud-toggle-btn">
+        <span>Свежая активность</span>
+        <span id="feed-arrow" class="hud-arrow">&#9662;</span>
+      </button>
+      <div id="feed-body" class="hud-body hidden">
+        <div id="feed-list" class="feed-list"></div>
+      </div>
+    </div>
+
+    <!-- Виджет: Поиск и фильтры -->
+    <div id="filters-hud" class="hud-widget">
+      <button type="button" id="btn-toggle-filters" class="hud-toggle-btn">
+        <span>Поиск и фильтры</span>
+        <span id="filters-arrow" class="hud-arrow">&#9662;</span>
+      </button>
+      <div id="filters-body" class="hud-body hidden">
+       <div class="search-autocomplete-wrap" style="position: relative; margin-bottom: 7px;">
+  <input type="text" id="filter-search" class="hud-input" style="margin-bottom: 0;" placeholder="Ник, крю, работа или адрес/место..." autocomplete="off">
+  <div id="search-suggestions" class="search-suggestions hidden"></div>
+</div>
+        <select id="filter-type" class="hud-select">
+          <option value="all">Все типы работ</option>
+          <option value="hotspot">Только горячие точки (x2)</option>
+          <option value="sticker">Только стикеры (135 м)</option>
+          <option value="tag">Только теги (100 м)</option>
+          <option value="graffiti">Только граффити (250 м)</option>
+        </select>
+        <label class="hud-checkbox-label">
+          <input type="checkbox" id="filter-only-crew">
+          <span>Только моё крю</span>
+        </label>
+        <label class="hud-checkbox-label">
+          <input type="checkbox" id="filter-hide-gone">
+          <span>Скрыть сорванные</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Кнопка патруля / модерации (видна только Модераторам и Владельцу) -->
+    <button type="button" id="btn-open-patrol" class="btn-patrol-hud hidden">
+      <span>Патруль (<span id="patrol-pending-count">0</span>)</span>
+    </button>
+  </div>
+
+  <!-- Ссылка на Boosty рядом с кнопкой Меню -->
+  <a id="btn-boosty-main" href="https://boosty.to/stickermap/purchase/4181540?ssource=DIRECT&share=subscription_link" target="_blank" rel="noopener noreferrer" style="
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    left: 104px;
+    z-index: 990;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #ffd60a, #f59e0b);
+    color: #111111;
+    font-weight: 800;
+    font-size: 12px;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    white-space: nowrap;
+  ">
+    <span>Купить Premium</span>
+  </a>
+
+  <!-- Кнопка принудительного обновления карты -->
+  <button type="button" id="btn-refresh-spots" title="Обновить точки на карте" style="
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 62px);
+    left: 230px;
+    z-index: 990;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(18, 18, 22, 0.88);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  ">&#8635;</button>
+
+  <!-- Карта -->
+  <div id="map"></div>
+
+  <!-- Быстрый фильтр типов меток (три точки справа) -->
+  <div class="map-filter-widget">
+    <button type="button" id="btn-map-filter" class="btn-map-filter" title="Фильтр слоёв на карте" aria-label="Фильтр слоёв">
+      <span></span><span></span><span></span>
+    </button>
+    <div id="map-filter-popover" class="map-filter-popover hidden">
+      <div class="map-filter-title">Показывать на карте</div>
+      <label class="map-filter-option">
+        <input type="checkbox" class="spot-type-layer-check" value="sticker" checked>
+        <span>Стикеры</span>
+      </label>
+      <label class="map-filter-option">
+        <input type="checkbox" class="spot-type-layer-check" value="graffiti" checked>
+        <span>Граффити</span>
+      </label>
+      <label class="map-filter-option">
+        <input type="checkbox" class="spot-type-layer-check" value="tag" checked>
+        <span>Теги</span>
+      </label>
+
+      <!-- Фильтр статуса модерации (только для Стаффа) -->
+      <div id="staff-map-filter-block" class="hidden" style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.12);">
+        <div class="map-filter-title">Статус проверки</div>
+        <label class="map-filter-option">
+          <input type="radio" name="staffStatusFilter" value="all" checked>
+          <span>Все посты</span>
+        </label>
+        <label class="map-filter-option">
+          <input type="radio" name="staffStatusFilter" value="approved">
+          <span>Только одобренные</span>
+        </label>
+        <label class="map-filter-option">
+          <input type="radio" name="staffStatusFilter" value="pending">
+          <span>Только на проверке</span>
+        </label>
+        <button type="button" id="btn-toggle-bulk-select" style="width:100%; margin-top:8px; padding:7px 8px; border:1px solid rgba(239,68,68,0.55); border-radius:8px; background:rgba(239,68,68,0.16); color:#fca5a5; font-size:12px; font-weight:700; cursor:pointer;">
+          Выделить для удаления
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Нижняя панель кнопок -->
+  <div class="bottom-actions">
+    <button id="btn-gps-spot" class="btn-gps" title="Отметить по моему GPS">GPS</button>
+    <button id="btn-add-spot" class="btn-primary">+ Добавить</button>
+  </div>
+
+  <!-- Модальное окно авторизации -->
+  <div id="auth-modal" class="modal-overlay hidden">
+    <div class="modal-card auth-card">
+      <h2>Добро пожаловать в StickerMap</h2>
+      <p class="auth-subtitle">Войди, чтобы захватывать территории, получать ранг и выступать за крю.</p>
+
+      <form id="email-auth-form">
+        <label>
+          <span>Email:</span>
+          <input type="email" id="auth-email" placeholder="artist@example.com" required />
+        </label>
+        <label>
+          <span>Пароль:</span>
+          <div class="password-input-wrap">
+            <input type="password" id="auth-password" placeholder="Минимум 6 символов" minlength="6" required />
+            <button type="button" id="toggle-password" class="btn-toggle-pass" title="Показать пароль">Показать</button>
+          </div>
+        </label>
+        <div style="text-align: right; margin: -2px 0 10px;">
+          <button type="button" id="btn-forgot-password" style="background:none; border:none; padding:0; color:#94a3b8; font-size:12px; text-decoration:underline; cursor:pointer;">
+            Забыли пароль?
+          </button>
+        </div>
+        <button type="submit" id="btn-email-submit" class="btn-primary w-100">Войти / Зарегистрироваться</button>
+      </form>
+
+      <button type="button" id="btn-guest-mode" class="btn-secondary w-100 mt-8">Продолжить как гость (только просмотр)</button>
+    </div>
+  </div>
+
+  <!-- Модальное окно настройки профиля и ранга -->
+  <div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2>Профиль и Уличный ранг</h2>
+
+      <div class="rank-card">
+        <div class="rank-card-top">
+          <span id="profile-rank-badge" class="rank-badge">Toy</span>
+          <span id="profile-rank-stats" class="rank-stats">0.000 км² • 0 респектов</span>
+        </div>
+        <div id="profile-rank-next" class="rank-next-hint">До Tagger: 0.250 км²</div>
+      </div>
+
+      <button type="button" id="btn-find-my-spots" style="width:100%; margin-bottom:12px; padding:9px 12px; border:1px solid rgba(255,204,0,0.4); border-radius:10px; background:rgba(255,204,0,0.12); color:#ffcc00; font-weight:700; font-size:13px; cursor:pointer;">
+        Найти мои точки на карте
+      </button>
+
+      <!-- Управление своими работами (массовое удаление) -->
+      <div id="my-spots-manager" style="margin-bottom:14px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:700; color:#e2e8f0;">Мои работы (<span id="my-spots-total-count">0</span>)</span>
+          <div style="display:flex; gap:6px;">
+            <button type="button" id="btn-my-spots-select-all" style="padding:4px 8px; border:none; border-radius:6px; background:rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; font-weight:600; cursor:pointer;">Выбрать все</button>
+            <button type="button" id="btn-my-spots-delete-selected" disabled style="padding:4px 9px; border:none; border-radius:6px; background:#555; color:#fff; font-size:11px; font-weight:700; cursor:default;">Удалить (0)</button>
+          </div>
+        </div>
+        <div id="my-spots-checklist" style="max-height:175px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+
+      <form id="profile-form">
+        <label>
+          <span>Твой никнейм (тег):</span>
+          <input type="text" id="profile-nickname" placeholder="Например: Kobra" maxlength="20" required />
+        </label>
+
+        <div class="avatar-picker-row">
+          <img id="profile-avatar-preview" src="" alt="Аватар" class="profile-avatar-preview" />
+          <label class="avatar-upload-label">
+            <span>Аватар профиля</span>
+            <input type="file" id="profile-avatar-input" accept="image/*" />
+          </label>
+        </div>
+
+        <label>
+          <span>Цвет твоей территории (или крю):</span>
+          <div class="color-picker-row">
+            <input type="color" id="profile-color" value="#2ecc71" />
+            <div class="color-swatches">
+              <button type="button" class="swatch-btn" data-color="#2ecc71" style="background:#2ecc71;"></button>
+              <button type="button" class="swatch-btn" data-color="#3498db" style="background:#3498db;"></button>
+              <button type="button" class="swatch-btn" data-color="#9b59b6" style="background:#9b59b6;"></button>
+              <button type="button" class="swatch-btn" data-color="#f1c40f" style="background:#f1c40f;"></button>
+              <button type="button" class="swatch-btn" data-color="#e67e22" style="background:#e67e22;"></button>
+              <button type="button" class="swatch-btn" data-color="#e91e63" style="background:#e91e63;"></button>
+              <button type="button" class="swatch-btn" data-color="#1abc9c" style="background:#1abc9c;"></button>
+            </div>
+          </div>
+        </label>
+
+        <div class="crew-choice-group">
+          <span>Формат участия:</span>
+          <label class="radio-label">
+            <input type="radio" name="crewType" value="solo" checked />
+            <span>В соло (Solo)</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="crewType" value="crew" />
+            <span>В составе крю (Crew)</span>
+          </label>
+        </div>
+
+        <div id="crew-name-group" class="hidden">
+          <label>
+            <span>Название крю:</span>
+            <input type="text" id="profile-crew-name" placeholder="Например: 163 Crew" maxlength="20" />
+          </label>
+          <label>
+            <span>Секретный инвайт-код крю:</span>
+            <input type="text" id="profile-crew-code" placeholder="Придумай или введи код команды" maxlength="20" />
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-logout" class="btn-danger-outline">Выйти</button>
+          <button type="submit" id="btn-save-profile" class="btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модальное окно добавления / редактирования точки -->
+  <div id="spot-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2 id="modal-title">Новая точка</h2>
+      <form id="spot-form">
+        <input type="hidden" id="spot-id" />
+        <input type="hidden" id="spot-lat" />
+        <input type="hidden" id="spot-lng" />
+
+        <div class="spot-type-group">
+          <span>Тип работы:</span>
+          <div class="spot-type-options">
+            <label class="type-pill">
+              <input type="radio" name="spotType" value="sticker" checked />
+              <span>Стикер (135 м)</span>
+            </label>
+            <label class="type-pill">
+              <input type="radio" name="spotType" value="tag" />
+              <span>Тег (100 м)</span>
+            </label>
+            <label class="type-pill">
+              <input type="radio" name="spotType" value="graffiti" />
+              <span>Граффити (250 м)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Выбор публикации: в соло или от крю -->
+        <div id="publish-as-group" class="spot-type-group hidden">
+          <span>От чьего имени закрасить зону:</span>
+          <div class="spot-type-options" style="grid-template-columns: 1fr 1fr;">
+            <label class="type-pill">
+              <input type="radio" name="publishAs" value="solo" checked />
+              <span>В соло (личный цвет)</span>
+            </label>
+            <label class="type-pill">
+              <input type="radio" name="publishAs" value="crew" />
+              <span id="publish-as-crew-label">От крю</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Опция Горячей точки (только для Владельца) -->
+        <div id="hotspot-admin-group" class="hotspot-admin-box hidden">
+          <label class="hud-checkbox-label">
+            <input type="checkbox" id="input-is-hotspot" />
+            <span>Горячая точка (x2 очки территории и радиус 350 м)</span>
+          </label>
+        </div>
+
+        <label>
+          <span>Название / Тег работы:</span>
+          <input type="text" id="input-title" placeholder="Например: Череп на водостоке" required />
+        </label>
+
+        <label>
+          <span>Состояние:</span>
+          <select id="select-status">
+            <option value="ok">Цел (Зона активна)</option>
+            <option value="damaged">Потрёпан / Выцвел (Ослаблен)</option>
+            <option value="gone">Сорван / Закрашен</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Фотографии (обязательно хотя бы 1 фото):</span>
+          <input type="file" id="input-photos" accept="image/*" multiple />
+          <div id="photos-preview-grid" class="photos-preview-grid"></div>
+        </label>
+
+        <label>
+          <span>Описание / Ориентир:</span>
+          <textarea id="input-note" rows="2" placeholder="На обратной стороне знака..."></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-modal" class="btn-secondary">Отмена</button>
+          <button type="submit" id="btn-save-spot" class="btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Полноэкранный просмотр фото -->
+  <div id="lightbox-modal" class="lightbox-overlay hidden">
+    <button id="lightbox-close" class="lightbox-close">&times;</button>
+    <img id="lightbox-img" src="" alt="Фото стикера" />
+  </div>
+
+  <!-- Скрипты (defer для неблокирующей отрисовки страницы) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" defer></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="js/app.js?v=27" defer></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('SW registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
